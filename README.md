@@ -18,3 +18,4 @@ View your app in AI Studio: https://ai.studio/apps/74e4df4b-a068-44ec-887b-ef5d7
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+# etsy
