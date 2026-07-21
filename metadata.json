@@ -1,0 +1,8 @@
+{
+  "name": "Remix: SalesGenius AI Studio",
+  "description": "An advanced e-commerce content generator powered by Gemini and Veo. It analyzes product photos, generates commercial product photography, short videos, SEO copy, tags, and sales potential scores for batch product listing workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

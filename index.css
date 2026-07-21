@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* Additional dark mode system styling */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #090d16;
+  color: #f1f5f9;
+}
