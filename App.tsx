@@ -17,19 +17,29 @@ import {
   RefreshCw,
   Clock,
   Images,
-  Video
+  Video,
+  Store
 } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { ModelTier, ProductData, GeneratedAsset, ShotStyleType } from "./types";
 import { TextAnalysis } from "./components/TextAnalysis";
 import { AssetGrid } from "./components/AssetGrid";
+import { EtsyDraftDialog } from "./components/EtsyDraftDialog";
 import { 
   analyzeProductImage, 
   generateMarketingImage, 
   generateTextContent,
   createCinematicVideoBlob
 } from "./services/geminiService";
+import {
+  connectEtsy,
+  createEtsyDraft,
+  EtsyConnectionStatus,
+  EtsyDraftInput,
+  EtsyDraftResult,
+  getEtsyStatus,
+} from "./services/etsyService";
 
 const SHOT_STYLE_OPTIONS: Array<{ value: ShotStyleType; label: string; description: string }> = [
   {
@@ -58,6 +68,8 @@ export default function App() {
   const [modelTier, setModelTier] = useState<ModelTier>("economy");
   const [shotStyle, setShotStyle] = useState<ShotStyleType>("creative_hero");
   const [dragActive, setDragActive] = useState(false);
+  const [etsyStatus, setEtsyStatus] = useState<EtsyConnectionStatus>({ configured: false, connected: false });
+  const [isEtsyDialogOpen, setIsEtsyDialogOpen] = useState(false);
 
   // File input ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -82,6 +94,20 @@ export default function App() {
   useEffect(() => {
     shotStyleRef.current = shotStyle;
   }, [shotStyle]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const etsyError = params.get("etsy_error");
+    if (etsyError) setError(etsyError);
+
+    if (params.has("etsy") || etsyError) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
+    getEtsyStatus()
+      .then(setEtsyStatus)
+      .catch((statusError) => setError(statusError instanceof Error ? statusError.message : "Could not check Etsy connection."));
+  }, []);
 
   // Abort Controller for stopping processing
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -460,37 +486,78 @@ export default function App() {
     await generateProductVideos(activeProductId);
   };
 
-  const handleSendEtsyDraft = async () => {
+  const handleSendEtsyDraft = () => {
     if (!activeProductId || !activeProduct) return;
     setError(null);
+
+    if (!etsyStatus.configured) {
+      setError(etsyStatus.message || "Add your Etsy API settings to .env.local, then restart the app.");
+      return;
+    }
+    if (!etsyStatus.connected) {
+      connectEtsy();
+      return;
+    }
+    if (!activeProduct.textContent) {
+      setError("Generate SEO title, description and 13 tags before creating an Etsy draft.");
+      return;
+    }
+    if (!activeProduct.assets.some((asset) => asset.type === "image" && asset.status === "completed" && asset.url)) {
+      setError("Generate at least one product image before creating an Etsy draft.");
+      return;
+    }
+    setIsEtsyDialogOpen(true);
+  };
+
+  const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error || new Error("Could not prepare the generated file."));
+    reader.readAsDataURL(blob);
+  });
+
+  const assetUrlToDataUrl = async (url: string): Promise<string> => {
+    if (url.startsWith("data:")) return url;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Could not read generated asset (${response.status}).`);
+    return blobToDataUrl(await response.blob());
+  };
+
+  const handleCreateEtsyDraft = async (input: EtsyDraftInput): Promise<EtsyDraftResult> => {
+    if (!activeProductId) throw new Error("No product is selected.");
+    const product = productsRef.current.find((item) => item.id === activeProductId);
+    if (!product?.textContent) throw new Error("Generate Etsy copy first.");
+
     updateProductStatus(activeProductId, "sending_etsy");
-
     try {
-      if (!activeProduct.textContent) {
-        throw new Error("Generate SEO title, description, tags and sales score before creating an Etsy draft.");
-      }
+      const completedImages = product.assets.filter((asset) => asset.type === "image" && asset.status === "completed" && asset.url);
+      const completedVideos = product.assets.filter((asset) => asset.type === "video" && asset.status === "completed" && asset.url);
 
-      const completedImages = activeProduct.assets.filter(a => a.type === "image" && a.status === "completed" && a.url);
-      if (completedImages.length === 0) {
-        throw new Error("Generate at least one completed product image before creating an Etsy draft.");
-      }
+      const images = await Promise.all(completedImages.slice(0, 20).map(async (asset) => ({
+        dataUrl: await assetUrlToDataUrl(asset.url),
+        label: asset.label,
+      })));
 
-      const draftPayload = {
-        title: activeProduct.textContent.title,
-        description: activeProduct.textContent.description,
-        tags: activeProduct.textContent.tags,
-        salesScore: activeProduct.textContent.salesScore,
-        category: activeProduct.category,
-        images: completedImages.map(a => ({ id: a.id, label: a.label, url: a.url })),
-        status: "draft",
-        note: "Connect Etsy OAuth/API credentials to publish this payload as a real Etsy draft.",
-      };
+      const videos = await Promise.all(completedVideos.slice(0, 2).map(async (asset) => {
+        if (asset.url.startsWith("cinematic-reveal://")) {
+          const frameUrl = decodeURIComponent(asset.url.replace("cinematic-reveal://", ""));
+          const videoBlob = await createCinematicVideoBlob(frameUrl, 5000);
+          return { dataUrl: await blobToDataUrl(videoBlob), label: asset.label };
+        }
+        return { dataUrl: await assetUrlToDataUrl(asset.url), label: asset.label };
+      }));
 
-      const blob = new Blob([JSON.stringify(draftPayload, null, 2)], { type: "application/json" });
-      saveAs(blob, `etsy_draft_${activeProduct.name.replace(/[^a-zA-Z0-9]+/g, "_")}.json`);
-      updateProductStatus(activeProductId, "completed");
-    } catch (err: any) {
-      setError(err?.message || "Failed to prepare Etsy draft.");
+      return await createEtsyDraft({
+        listing: {
+          title: product.textContent.title,
+          description: product.textContent.description,
+          tags: product.textContent.tags,
+          ...input,
+        },
+        images,
+        videos,
+      });
+    } finally {
       updateProductStatus(activeProductId, "completed");
     }
   };
@@ -1049,8 +1116,8 @@ ${product.textContent.scoreReasoning}
                     onClick={handleSendEtsyDraft}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 font-bold text-[10px] uppercase tracking-wider text-orange-200 border border-orange-500/25 transition-all cursor-pointer"
                   >
-                    <UploadCloud className="w-3.5 h-3.5 text-orange-300" />
-                    <span>Etsy Draft</span>
+                    <Store className="w-3.5 h-3.5 text-orange-300" />
+                    <span>{etsyStatus.connected ? "Etsy Draft" : "Connect Etsy"}</span>
                   </button>
                 </div>
 
@@ -1140,6 +1207,17 @@ ${product.textContent.scoreReasoning}
         </main>
 
       </div>
+
+      {isEtsyDialogOpen && activeProduct && etsyStatus.shopName && (
+        <EtsyDraftDialog
+          shopName={etsyStatus.shopName}
+          productCategory={activeProduct.category}
+          imageCount={imageAssets.filter((asset) => asset.status === "completed").length}
+          videoCount={videoAssets.filter((asset) => asset.status === "completed").length}
+          onClose={() => setIsEtsyDialogOpen(false)}
+          onSubmit={handleCreateEtsyDraft}
+        />
+      )}
 
     </div>
   );
