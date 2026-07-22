@@ -80,6 +80,12 @@ export function EtsyDraftDialog({
   const [isSupply, setIsSupply] = useState(false);
   const [readinessStateId, setReadinessStateId] = useState<number | undefined>();
   const [shippingProfileId, setShippingProfileId] = useState<number | undefined>();
+  const [itemWeight, setItemWeight] = useState("");
+  const [itemWeightUnit, setItemWeightUnit] = useState<NonNullable<EtsyDraftInput["itemWeightUnit"]>>("kg");
+  const [itemLength, setItemLength] = useState("");
+  const [itemWidth, setItemWidth] = useState("");
+  const [itemHeight, setItemHeight] = useState("");
+  const [itemDimensionsUnit, setItemDimensionsUnit] = useState<NonNullable<EtsyDraftInput["itemDimensionsUnit"]>>("cm");
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -124,6 +130,9 @@ export function EtsyDraftDialog({
     setLocalError(null);
   };
 
+  const selectedShippingProfile = shippingProfiles.find((item) => item.shippingProfileId === shippingProfileId);
+  const requiresPackageDimensions = selectedShippingProfile?.profileType === "calculated";
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLocalError(null);
@@ -140,6 +149,10 @@ export function EtsyDraftDialog({
       setLocalError("Select an Etsy shipping profile for this physical listing.");
       return;
     }
+    if (requiresPackageDimensions && [itemWeight, itemLength, itemWidth, itemHeight].some((value) => !value || Number(value) <= 0)) {
+      setLocalError("Enter the packaged weight, length, width and height required by this calculated shipping profile.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       setResult(await onSubmit({
@@ -151,6 +164,12 @@ export function EtsyDraftDialog({
         isSupply,
         readinessStateId,
         shippingProfileId,
+        itemWeight: itemWeight ? Number(itemWeight) : undefined,
+        itemWeightUnit: itemWeight ? itemWeightUnit : undefined,
+        itemLength: itemLength ? Number(itemLength) : undefined,
+        itemWidth: itemWidth ? Number(itemWidth) : undefined,
+        itemHeight: itemHeight ? Number(itemHeight) : undefined,
+        itemDimensionsUnit: itemLength && itemWidth && itemHeight ? itemDimensionsUnit : undefined,
       }));
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : "Etsy draft could not be created.");
@@ -285,6 +304,34 @@ export function EtsyDraftDialog({
                       <select id="etsy-shipping-profile" value={shippingProfileId || ""} onChange={(event) => setShippingProfileId(Number(event.target.value) || undefined)} className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60">
                         {shippingProfiles.map((item) => <option key={item.shippingProfileId} value={item.shippingProfileId}>{item.title}</option>)}
                       </select>
+                    </div>
+                  )}
+                  {requiresPackageDimensions && (
+                    <div className="sm:col-span-2 space-y-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                      <p className="text-[11px] leading-relaxed text-amber-200">This calculated shipping profile needs the packaged product weight and dimensions.</p>
+                      <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-2">
+                        <div>
+                          <label htmlFor="etsy-item-weight" className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-400">Package Weight</label>
+                          <input id="etsy-item-weight" type="number" min="0.01" step="0.01" value={itemWeight} onChange={(event) => setItemWeight(event.target.value)} placeholder="0.00" className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60" />
+                        </div>
+                        <div>
+                          <label htmlFor="etsy-weight-unit" className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-400">Unit</label>
+                          <select id="etsy-weight-unit" value={itemWeightUnit} onChange={(event) => setItemWeightUnit(event.target.value as NonNullable<EtsyDraftInput["itemWeightUnit"]>)} className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60">
+                            <option value="g">g</option><option value="kg">kg</option><option value="oz">oz</option><option value="lb">lb</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-400">Package Dimensions</label>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_96px]">
+                          <input aria-label="Package length" type="number" min="0.01" step="0.01" value={itemLength} onChange={(event) => setItemLength(event.target.value)} placeholder="Length" className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60" />
+                          <input aria-label="Package width" type="number" min="0.01" step="0.01" value={itemWidth} onChange={(event) => setItemWidth(event.target.value)} placeholder="Width" className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60" />
+                          <input aria-label="Package height" type="number" min="0.01" step="0.01" value={itemHeight} onChange={(event) => setItemHeight(event.target.value)} placeholder="Height" className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60" />
+                          <select aria-label="Package dimension unit" value={itemDimensionsUnit} onChange={(event) => setItemDimensionsUnit(event.target.value as NonNullable<EtsyDraftInput["itemDimensionsUnit"]>)} className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60">
+                            <option value="cm">cm</option><option value="mm">mm</option><option value="m">m</option><option value="in">in</option><option value="ft">ft</option><option value="yd">yd</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

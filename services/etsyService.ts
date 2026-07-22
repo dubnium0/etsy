@@ -20,6 +20,7 @@ export interface EtsyReadinessState {
 export interface EtsyShippingProfile {
   shippingProfileId: number;
   title: string;
+  profileType: string;
 }
 
 export interface EtsyDraftInput {
@@ -31,6 +32,12 @@ export interface EtsyDraftInput {
   isSupply: boolean;
   readinessStateId?: number;
   shippingProfileId: number;
+  itemWeight?: number;
+  itemWeightUnit?: "oz" | "lb" | "g" | "kg";
+  itemLength?: number;
+  itemWidth?: number;
+  itemHeight?: number;
+  itemDimensionsUnit?: "in" | "ft" | "mm" | "cm" | "m" | "yd";
 }
 
 export interface EtsyDraftResult {

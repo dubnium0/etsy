@@ -290,11 +290,13 @@ app.get("/api/etsy/shipping-profiles", async (request, response, next) => {
     const data = await etsyFetch<{ results: Array<{
       shipping_profile_id: number;
       title: string;
+      profile_type?: string;
     }> }>(auth, `/shops/${auth.shopId}/shipping-profiles`);
     response.json({
       results: data.results.map((item) => ({
         shippingProfileId: item.shipping_profile_id,
         title: item.title || `Shipping profile ${item.shipping_profile_id}`,
+        profileType: item.profile_type || "manual",
       })),
     });
   } catch (error) {
@@ -318,6 +320,12 @@ app.post("/api/etsy/drafts", async (request, response, next) => {
         isSupply: boolean;
         readinessStateId?: number;
         shippingProfileId: number;
+        itemWeight?: number;
+        itemWeightUnit?: string;
+        itemLength?: number;
+        itemWidth?: number;
+        itemHeight?: number;
+        itemDimensionsUnit?: string;
       };
       images: Array<{ dataUrl: string; label: string }>;
       videos: Array<{ dataUrl: string; label: string }>;
@@ -347,6 +355,16 @@ app.post("/api/etsy/drafts", async (request, response, next) => {
     listing.tags.slice(0, 13).forEach((tag) => draftBody.append("tags[]", tag.slice(0, 20)));
     if (listing.readinessStateId) {
       draftBody.set("readiness_state_id", String(listing.readinessStateId));
+    }
+    if (listing.itemWeight && listing.itemWeightUnit) {
+      draftBody.set("item_weight", String(listing.itemWeight));
+      draftBody.set("item_weight_unit", listing.itemWeightUnit);
+    }
+    if (listing.itemLength && listing.itemWidth && listing.itemHeight && listing.itemDimensionsUnit) {
+      draftBody.set("item_length", String(listing.itemLength));
+      draftBody.set("item_width", String(listing.itemWidth));
+      draftBody.set("item_height", String(listing.itemHeight));
+      draftBody.set("item_dimensions_unit", listing.itemDimensionsUnit);
     }
 
     const draft = await etsyFetch<{ listing_id: number }>(auth, `/shops/${auth.shopId}/listings`, {

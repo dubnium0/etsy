@@ -13,12 +13,14 @@ export default {
       const data = await etsyRequest<{ results: Array<{
         shipping_profile_id: number;
         title: string;
+        profile_type?: string;
       }> }>(session.auth, `/shops/${session.auth.shopId}/shipping-profiles`);
       const headers = session.setCookie ? { "Set-Cookie": session.setCookie } : undefined;
       return jsonResponse({
         results: data.results.map((item) => ({
           shippingProfileId: item.shipping_profile_id,
           title: item.title || `Shipping profile ${item.shipping_profile_id}`,
+          profileType: item.profile_type || "manual",
         })),
       }, 200, headers);
     } catch (error) {
