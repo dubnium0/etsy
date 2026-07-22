@@ -284,6 +284,24 @@ app.get("/api/etsy/readiness-states", async (request, response, next) => {
   }
 });
 
+app.get("/api/etsy/shipping-profiles", async (request, response, next) => {
+  try {
+    const auth = await requireEtsyAuth(request);
+    const data = await etsyFetch<{ results: Array<{
+      shipping_profile_id: number;
+      title: string;
+    }> }>(auth, `/shops/${auth.shopId}/shipping-profiles`);
+    response.json({
+      results: data.results.map((item) => ({
+        shippingProfileId: item.shipping_profile_id,
+        title: item.title || `Shipping profile ${item.shipping_profile_id}`,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/etsy/drafts", async (request, response, next) => {
   try {
     const auth = await requireEtsyAuth(request);
@@ -299,13 +317,14 @@ app.post("/api/etsy/drafts", async (request, response, next) => {
         whenMade: string;
         isSupply: boolean;
         readinessStateId?: number;
+        shippingProfileId: number;
       };
       images: Array<{ dataUrl: string; label: string }>;
       videos: Array<{ dataUrl: string; label: string }>;
     };
 
-    if (!listing?.title || !listing.description || !listing.price || !listing.taxonomyId) {
-      throw new Error("Title, description, price and Etsy category are required.");
+    if (!listing?.title || !listing.description || !listing.price || !listing.taxonomyId || !listing.shippingProfileId) {
+      throw new Error("Title, description, price, Etsy category and shipping profile are required.");
     }
     if (!Array.isArray(listing.tags) || listing.tags.length !== 13) {
       throw new Error("Exactly 13 Etsy tags are required.");
@@ -323,6 +342,7 @@ app.post("/api/etsy/drafts", async (request, response, next) => {
       taxonomy_id: String(listing.taxonomyId),
       type: "physical",
       should_auto_renew: "false",
+      shipping_profile_id: String(listing.shippingProfileId),
     });
     listing.tags.slice(0, 13).forEach((tag) => draftBody.append("tags[]", tag.slice(0, 20)));
     if (listing.readinessStateId) {

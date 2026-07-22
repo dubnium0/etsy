@@ -17,6 +17,11 @@ export interface EtsyReadinessState {
   label: string;
 }
 
+export interface EtsyShippingProfile {
+  shippingProfileId: number;
+  title: string;
+}
+
 export interface EtsyDraftInput {
   price: string;
   quantity: number;
@@ -25,6 +30,7 @@ export interface EtsyDraftInput {
   whenMade: string;
   isSupply: boolean;
   readinessStateId?: number;
+  shippingProfileId: number;
 }
 
 export interface EtsyDraftResult {
@@ -62,6 +68,13 @@ export async function getEtsyTaxonomies(): Promise<EtsyTaxonomyOption[]> {
 export async function getEtsyReadinessStates(): Promise<EtsyReadinessState[]> {
   const result = await readApiResponse<{ results: EtsyReadinessState[] }>(
     await fetch("/api/etsy/readiness-states")
+  );
+  return result.results;
+}
+
+export async function getEtsyShippingProfiles(): Promise<EtsyShippingProfile[]> {
+  const result = await readApiResponse<{ results: EtsyShippingProfile[] }>(
+    await fetch("/api/etsy/shipping-profiles")
   );
   return result.results;
 }

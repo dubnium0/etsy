@@ -16,6 +16,7 @@ interface DraftListingInput {
   whenMade: string;
   isSupply: boolean;
   readinessStateId?: number;
+  shippingProfileId: number;
 }
 
 export default {
@@ -25,8 +26,8 @@ export default {
       const session = await requireEtsySession(request);
       const body = await request.json() as { listing?: DraftListingInput };
       const listing = body.listing;
-      if (!listing?.title || !listing.description || !listing.price || !listing.taxonomyId) {
-        throw new Error("Title, description, price and Etsy category are required.");
+      if (!listing?.title || !listing.description || !listing.price || !listing.taxonomyId || !listing.shippingProfileId) {
+        throw new Error("Title, description, price, Etsy category and shipping profile are required.");
       }
       if (!Array.isArray(listing.tags) || listing.tags.length !== 13) {
         throw new Error("Exactly 13 Etsy tags are required.");
@@ -43,6 +44,7 @@ export default {
         taxonomy_id: String(listing.taxonomyId),
         type: "physical",
         should_auto_renew: "false",
+        shipping_profile_id: String(listing.shippingProfileId),
       });
       listing.tags.forEach((tag) => draftBody.append("tags[]", tag.slice(0, 20)));
       if (listing.readinessStateId) draftBody.set("readiness_state_id", String(listing.readinessStateId));

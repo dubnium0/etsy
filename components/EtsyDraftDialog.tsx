@@ -4,8 +4,10 @@ import {
   EtsyDraftInput,
   EtsyDraftResult,
   EtsyReadinessState,
+  EtsyShippingProfile,
   EtsyTaxonomyOption,
   getEtsyReadinessStates,
+  getEtsyShippingProfiles,
   getEtsyTaxonomies,
 } from "../services/etsyService";
 
@@ -68,6 +70,7 @@ export function EtsyDraftDialog({
 }: EtsyDraftDialogProps) {
   const [taxonomies, setTaxonomies] = useState<EtsyTaxonomyOption[]>([]);
   const [readinessStates, setReadinessStates] = useState<EtsyReadinessState[]>([]);
+  const [shippingProfiles, setShippingProfiles] = useState<EtsyShippingProfile[]>([]);
   const [categoryQuery, setCategoryQuery] = useState(productCategory);
   const [selectedTaxonomy, setSelectedTaxonomy] = useState<EtsyTaxonomyOption | null>(null);
   const [price, setPrice] = useState("");
@@ -76,6 +79,7 @@ export function EtsyDraftDialog({
   const [whenMade, setWhenMade] = useState("made_to_order");
   const [isSupply, setIsSupply] = useState(false);
   const [readinessStateId, setReadinessStateId] = useState<number | undefined>();
+  const [shippingProfileId, setShippingProfileId] = useState<number | undefined>();
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -83,8 +87,8 @@ export function EtsyDraftDialog({
 
   useEffect(() => {
     let active = true;
-    Promise.all([getEtsyTaxonomies(), getEtsyReadinessStates()])
-      .then(([taxonomyOptions, readinessOptions]) => {
+    Promise.all([getEtsyTaxonomies(), getEtsyReadinessStates(), getEtsyShippingProfiles()])
+      .then(([taxonomyOptions, readinessOptions, shippingOptions]) => {
         if (!active) return;
         setTaxonomies(taxonomyOptions);
         const initialMatches = rankTaxonomyMatches(productCategory, taxonomyOptions);
@@ -98,6 +102,11 @@ export function EtsyDraftDialog({
         }
         setReadinessStates(readinessOptions);
         setReadinessStateId(readinessOptions[0]?.readinessStateId);
+        setShippingProfiles(shippingOptions);
+        setShippingProfileId(shippingOptions[0]?.shippingProfileId);
+        if (shippingOptions.length === 0) {
+          setLocalError("No shipping profile was found in this Etsy shop. Create one in Etsy Shop Manager, then reopen this dialog.");
+        }
       })
       .catch((error) => active && setLocalError(error instanceof Error ? error.message : "Could not load Etsy options."))
       .finally(() => active && setIsLoadingOptions(false));
@@ -127,6 +136,10 @@ export function EtsyDraftDialog({
       setLocalError("Enter a valid product price.");
       return;
     }
+    if (!shippingProfileId) {
+      setLocalError("Select an Etsy shipping profile for this physical listing.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       setResult(await onSubmit({
@@ -137,6 +150,7 @@ export function EtsyDraftDialog({
         whenMade,
         isSupply,
         readinessStateId,
+        shippingProfileId,
       }));
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : "Etsy draft could not be created.");
@@ -265,6 +279,14 @@ export function EtsyDraftDialog({
                       </select>
                     </div>
                   )}
+                  {shippingProfiles.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <label htmlFor="etsy-shipping-profile" className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-400">Shipping Profile</label>
+                      <select id="etsy-shipping-profile" value={shippingProfileId || ""} onChange={(event) => setShippingProfileId(Number(event.target.value) || undefined)} className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/60">
+                        {shippingProfiles.map((item) => <option key={item.shippingProfileId} value={item.shippingProfileId}>{item.title}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
@@ -278,7 +300,7 @@ export function EtsyDraftDialog({
 
             <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
               <button type="button" onClick={onClose} className="rounded-lg border border-slate-700 px-4 py-2.5 text-xs font-bold text-slate-300 transition-colors hover:bg-slate-800">Cancel</button>
-              <button type="submit" disabled={isLoadingOptions || isSubmitting} className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="submit" disabled={isLoadingOptions || isSubmitting || shippingProfiles.length === 0} className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50">
                 {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {isSubmitting ? "Sending Draft" : "Create Draft"}
               </button>
