@@ -41,6 +41,11 @@ import {
   EtsyDraftResult,
   getEtsyStatus,
 } from "./services/etsyService";
+import {
+  loadWorkspace,
+  requestPersistentWorkspaceStorage,
+  saveWorkspace,
+} from "./services/workspaceStorage";
 
 const SHOT_STYLE_OPTIONS: Array<{ value: ShotStyleType; label: string; description: string }> = [
   {
@@ -71,6 +76,7 @@ export default function App() {
   const [dragActive, setDragActive] = useState(false);
   const [etsyStatus, setEtsyStatus] = useState<EtsyConnectionStatus>({ configured: false, connected: false });
   const [isEtsyDialogOpen, setIsEtsyDialogOpen] = useState(false);
+  const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
 
   // File input ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -95,6 +101,46 @@ export default function App() {
   useEffect(() => {
     shotStyleRef.current = shotStyle;
   }, [shotStyle]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadWorkspace()
+      .then((workspace) => {
+        if (cancelled) return;
+        productsRef.current = workspace.products;
+        setProducts(workspace.products);
+        setActiveProductId(workspace.activeProductId);
+        setModelTier(workspace.modelTier);
+        setShotStyle(workspace.shotStyle);
+      })
+      .catch((storageError) => {
+        if (!cancelled) {
+          setError(storageError instanceof Error ? storageError.message : "Could not restore saved work.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsWorkspaceReady(true);
+      });
+
+    requestPersistentWorkspaceStorage().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isWorkspaceReady) return;
+
+    const timeout = window.setTimeout(() => {
+      saveWorkspace({ products, activeProductId, modelTier, shotStyle }).catch((storageError) => {
+        const message = storageError instanceof Error ? storageError.message : "Could not save the workspace.";
+        setError(`Local database save failed: ${message}`);
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [products, activeProductId, modelTier, shotStyle, isWorkspaceReady]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -318,7 +364,14 @@ export default function App() {
       if (!currentItem || !analysis) return;
 
       updateProductStatus(productId, "generating_images");
-      const imageAssets = currentItem.assets.filter(a => a.type === "image");
+      const imageAssets = currentItem.assets.filter(
+        (asset) => asset.type === "image" && !(asset.status === "completed" && asset.url),
+      );
+
+      if (imageAssets.length === 0) {
+        updateProductStatus(productId, "completed");
+        return;
+      }
 
       for (const asset of imageAssets) {
         if (isBatch && !isProcessingBatchRef.current) {
@@ -360,6 +413,10 @@ export default function App() {
   const generateProductText = async (productId: string) => {
     const product = productsRef.current.find(p => p.id === productId);
     if (!product) return;
+    if (product.textContent) {
+      updateProductStatus(productId, "completed");
+      return;
+    }
 
     try {
       const analysis = await ensureProductAnalysis(productId);
@@ -396,7 +453,14 @@ export default function App() {
       if (!currentItem || !analysis) return;
 
       updateProductStatus(productId, "generating_videos");
-      const videoAssets = currentItem.assets.filter(a => a.type === "video");
+      const videoAssets = currentItem.assets.filter(
+        (asset) => asset.type === "video" && !(asset.status === "completed" && asset.url),
+      );
+
+      if (videoAssets.length === 0) {
+        updateProductStatus(productId, "completed");
+        return;
+      }
 
       for (const asset of videoAssets) {
         updateAssetStatus(productId, asset.id, "generating");
