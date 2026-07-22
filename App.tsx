@@ -18,7 +18,8 @@ import {
   Clock,
   Images,
   Video,
-  Store
+  Store,
+  ShoppingBag
 } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
@@ -509,6 +510,19 @@ export default function App() {
     setIsEtsyDialogOpen(true);
   };
 
+  const handleHeaderEtsy = () => {
+    setError(null);
+    if (!etsyStatus.configured) {
+      setError(etsyStatus.message || "Etsy API settings are not configured.");
+      return;
+    }
+    if (!etsyStatus.connected) {
+      connectEtsy();
+      return;
+    }
+    if (activeProductId && activeProduct) handleSendEtsyDraft();
+  };
+
   const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
@@ -795,10 +809,10 @@ ${product.textContent.scoreReasoning}
     <div id="app-root-layout" className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans select-none antialiased bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-950/20 via-slate-950 to-slate-950">
       
       {/* 1. Universal Top Header bar */}
-      <header id="main-header" className="shrink-0 bg-slate-900/60 backdrop-blur-xl border-b border-white/5 h-16 px-6 flex items-center justify-between sticky top-0 z-50">
+      <header id="main-header" className="shrink-0 bg-slate-900/60 backdrop-blur-xl border-b border-white/5 min-h-16 px-3 sm:px-6 py-2 sm:py-0 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sticky top-0 z-50">
         
         {/* Left Side: Brand branding and icon */}
-        <div className="flex items-center gap-3">
+        <div className="flex w-full sm:w-auto items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-650 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
@@ -806,22 +820,22 @@ ${product.textContent.scoreReasoning}
             <span className="text-sm font-black tracking-wider text-slate-100 font-sans">
               SalesGenius <span className="text-blue-450 text-[10px] font-bold uppercase py-0.5 px-2 bg-blue-500/10 rounded-full border border-blue-500/20 ml-1.5 shrink-0 select-none">AI Studio</span>
             </span>
-            <span className="block text-[9px] text-slate-400 uppercase tracking-widest font-mono">E-Commerce Content Suite</span>
+            <span className="hidden sm:block text-[9px] text-slate-400 uppercase tracking-widest font-mono">E-Commerce Content Suite</span>
           </div>
         </div>
 
         {/* Right Side: Global control row */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex w-full sm:w-auto min-w-0 items-center justify-between sm:justify-start gap-2 sm:gap-2.5">
           
           {/* Model selection dropdown */}
-          <div className="flex items-center bg-slate-800/30 border border-slate-700/40 backdrop-blur-md px-2.5 py-1.5 rounded-xl gap-2 font-sans">
+          <div className="flex min-w-0 flex-1 sm:flex-none items-center bg-slate-800/30 border border-slate-700/40 backdrop-blur-md px-2.5 py-1.5 rounded-xl gap-2 font-sans">
             <Cpu className="w-4 h-4 text-blue-400" />
             <select
               id="model-tier-select"
               value={modelTier}
               disabled={isProcessingBatch}
               onChange={(e) => setModelTier(e.target.value as ModelTier)}
-              className="bg-transparent text-xs text-slate-200 font-semibold focus:outline-none cursor-pointer disabled:opacity-60"
+              className="min-w-0 max-w-[135px] sm:max-w-none bg-transparent text-xs text-slate-200 font-semibold focus:outline-none cursor-pointer disabled:opacity-60"
             >
               <option value="economy" className="bg-slate-950 text-slate-300">Standard Speed</option>
               <option value="premium" className="bg-slate-950 text-slate-300">Pro Mode (Ultra-Realism)</option>
@@ -845,22 +859,46 @@ ${product.textContent.scoreReasoning}
             </select>
           </div>
 
+          <button
+            id="etsy-settings-header-btn"
+            onClick={handleHeaderEtsy}
+            className={`flex shrink-0 items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase tracking-wider backdrop-blur-md rounded-xl transition-all cursor-pointer border ${
+              etsyStatus.connected
+                ? "text-emerald-300 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30"
+                : "text-orange-300 hover:text-white bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/25"
+            }`}
+            title={etsyStatus.connected ? `Connected to ${etsyStatus.shopName || "Etsy"}` : "Connect Etsy"}
+          >
+            {etsyStatus.connected ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="hidden sm:inline">Connected: {etsyStatus.shopName}</span>
+              </>
+            ) : (
+              <>
+                <ShoppingBag className="w-3.5 h-3.5 text-orange-400" />
+                <span className="hidden sm:inline">Connect Etsy</span>
+              </>
+            )}
+          </button>
+
           {/* Download all compressed zip catalog */}
           <button
             id="global-export-btn"
             disabled={products.length === 0 || isExporting}
             onClick={handleBatchExport}
-            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-3.5 py-2.5 text-slate-300 hover:text-white bg-slate-800/30 hover:bg-slate-750 active:bg-slate-900 border border-slate-700/40 backdrop-blur-md rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+            className="flex shrink-0 items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-3.5 py-2.5 text-slate-300 hover:text-white bg-slate-800/30 hover:bg-slate-750 active:bg-slate-900 border border-slate-700/40 backdrop-blur-md rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+            title="Download all"
           >
             {isExporting ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Zipping...</span>
+                <span className="hidden sm:inline">Zipping...</span>
               </>
             ) : (
               <>
                 <DownloadCloud className="w-3.5 h-3.5" />
-                <span>Download All</span>
+                <span className="hidden sm:inline">Download All</span>
               </>
             )}
           </button>
@@ -870,19 +908,21 @@ ${product.textContent.scoreReasoning}
             <button
               id="start-batch-btn"
               onClick={handleStartBatch}
-              className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:scale-[1.02] active:scale-95 text-white rounded-xl shadow-lg shadow-blue-500/10 cursor-pointer transition-all"
+              className="flex shrink-0 items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:scale-[1.02] active:scale-95 text-white rounded-xl shadow-lg shadow-blue-500/10 cursor-pointer transition-all"
+              title="Batch images"
             >
               <Play className="w-3.5 h-3.5 fill-white" />
-              <span>Batch Images</span>
+              <span className="hidden sm:inline">Batch Images</span>
             </button>
           ) : (
             <button
               id="stop-batch-btn"
               onClick={handleStopBatch}
-              className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-4 py-2.5 bg-gradient-to-r from-rose-600 to-red-650 text-white rounded-xl cursor-pointer transition-all animate-pulse shadow-lg"
+              className="flex shrink-0 items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-4 py-2.5 bg-gradient-to-r from-rose-600 to-red-650 text-white rounded-xl cursor-pointer transition-all animate-pulse shadow-lg"
+              title="Stop batch"
             >
               <Square className="w-3.5 h-3.5 fill-white" />
-              <span>Stop Batch</span>
+              <span className="hidden sm:inline">Stop Batch</span>
             </button>
           )}
 
@@ -891,10 +931,10 @@ ${product.textContent.scoreReasoning}
       </header>
 
       {/* 2. Main screen grid layout */}
-      <div id="dashboard-layout" className="grow flex overflow-hidden">
+      <div id="dashboard-layout" className="grow flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         
         {/* Left Sidebar: Upload catalog column */}
-        <aside id="sidebar" className="w-80 border-r border-white/5 bg-slate-950/40 backdrop-blur-lg flex flex-col shrink-0 select-none overflow-hidden h-full">
+        <aside id="sidebar" className="w-full md:w-80 max-h-[448px] md:max-h-none border-r border-white/5 bg-slate-950/40 backdrop-blur-lg flex flex-col shrink-0 select-none overflow-hidden h-auto md:h-full">
           
           {/* Upload card dragbox */}
           <div className="p-4 border-b border-white/5 bg-slate-950/10">
@@ -1001,7 +1041,7 @@ ${product.textContent.scoreReasoning}
         </aside>
 
         {/* Right Area: Dynamic work sandbox board */}
-        <main id="workspace" className="flex-1 bg-slate-950/20 flex flex-col overflow-y-auto bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-indigo-950/10 via-slate-950/10 to-slate-950/5">
+        <main id="workspace" className="w-full min-h-[520px] md:min-h-0 flex-1 bg-slate-950/20 flex flex-col overflow-y-auto bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-indigo-950/10 via-slate-950/10 to-slate-950/5">
           
           {/* Main system validation alert popup */}
           {error && (
