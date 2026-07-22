@@ -219,7 +219,12 @@ app.get("/api/etsy/callback", async (request, response) => {
     const userId = token.access_token.split(".")[0];
     const shop = await parseEtsyResponse<{ shop_id: number; shop_name: string }>(await fetch(
       `${apiBase}/application/users/${userId}/shops`,
-      { headers: { "x-api-key": apiKeyHeader() } }
+      {
+        headers: {
+          "x-api-key": apiKeyHeader(),
+          "Authorization": `Bearer ${token.access_token}`,
+        },
+      }
     ));
 
     await writeAuth({
@@ -230,6 +235,12 @@ app.get("/api/etsy/callback", async (request, response) => {
       shopId: shop.shop_id,
       shopName: shop.shop_name,
       sessionId: pending.sessionId,
+    });
+    response.cookie("sg_etsy_session", pending.sessionId, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: getConfig().redirectUri.startsWith("https://"),
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
     response.redirect("/?etsy=connected");
   } catch (error) {
