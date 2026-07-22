@@ -65,7 +65,7 @@ interface QualityAudit {
 }
 
 const MODELS = {
-  analysis: "gemini-3.5-flash",
+  analysis: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"],
   economyImage: "gemini-3.1-flash-image",
   premiumImage: "gemini-3-pro-image",
   video: "veo-3.1-fast-generate-preview",
@@ -220,6 +220,13 @@ function getErrorStatus(error: any): number | undefined {
   return error?.status ?? error?.response?.status ?? error?.error?.code;
 }
 
+function isRetryableError(error: any): boolean {
+  const status = getErrorStatus(error);
+  const message = String(error?.message || error).toLowerCase();
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504 ||
+    /high demand|quota|resource_exhausted|unavailable|timeout/.test(message);
+}
+
 export async function withRetry<T>(
   fn: () => Promise<T>,
   retries = 5,
@@ -231,11 +238,7 @@ export async function withRetry<T>(
       return await fn();
     } catch (error: any) {
       lastError = error;
-      const status = getErrorStatus(error);
-      const message = String(error?.message || error).toLowerCase();
-      const retryable = status === 429 || status === 500 || status === 502 ||
-        status === 503 || status === 504 || /quota|resource_exhausted|unavailable|timeout/.test(message);
-      if (!retryable || attempt === retries - 1) break;
+      if (!isRetryableError(error) || attempt === retries - 1) break;
       const exponential = baseDelayMs * 2 ** attempt;
       const jitter = Math.floor(Math.random() * 500);
       await new Promise((resolve) => setTimeout(resolve, exponential + jitter));
@@ -245,6 +248,24 @@ export async function withRetry<T>(
     throw new Error("Gemini API quota exhausted. Check billing/rate limits or retry later.");
   }
   throw lastError;
+}
+
+async function withAnalysisModelFallback<T>(fn: (model: string) => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (const model of MODELS.analysis) {
+    try {
+      return await withRetry(() => fn(model), 2);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableError(error)) throw error;
+      console.warn(`Gemini model ${model} is unavailable; trying the next analysis model.`);
+    }
+  }
+  throw new Error(
+    `Gemini analysis models are temporarily busy. Retry in a few minutes. ${
+      lastError instanceof Error ? lastError.message : ""
+    }`.trim(),
+  );
 }
 
 function validateStrategy(result: ImageAnalysisResult): void {
@@ -299,8 +320,8 @@ Every negativePrompt must reject: extra products, duplicated parts, altered geom
 
   let semanticError = "";
   for (let pass = 0; pass < 3; pass++) {
-    const response = await withRetry(() => getClient().models.generateContent({
-      model: MODELS.analysis,
+    const response = await withAnalysisModelFallback((model) => getClient().models.generateContent({
+      model,
       contents: [
         ...refs.map((ref) => ({ inlineData: { data: ref.data, mimeType: ref.mimeType } })),
         { text: semanticError ? `${prompt}\n\nPrevious response error: ${semanticError}. Correct it.` : prompt },
@@ -440,8 +461,8 @@ async function auditImage(
   scenePrompt: string,
 ): Promise<QualityAudit> {
   const generatedRef = toImageRef(generated);
-  const response = await withRetry(() => getClient().models.generateContent({
-    model: MODELS.analysis,
+  const response = await withAnalysisModelFallback((model) => getClient().models.generateContent({
+    model,
     contents: [
       { text: `Act as a strict commercial retouching QA reviewer. The first image is GENERATED; all following images are REFERENCES. Compare physical product identity, not readable branding. Check silhouette, object count, proportions, colors, materials, closures, seams, edge geometry, perspective, contact shadow, clipping, blur and commercial polish. Intended scene: ${scenePrompt}. Identity passport: ${identityText("", lock)}. Score 0-100. A score >= 88 requires both strong identity preservation and marketplace-ready realism.` },
       { inlineData: { data: generatedRef.data, mimeType: generatedRef.mimeType } },
@@ -561,8 +582,8 @@ export async function generateTextContent(
   productName: string,
   analysis: ImageAnalysisResult,
 ): Promise<TextContent> {
-  const response = await withRetry(() => getClient().models.generateContent({
-    model: MODELS.analysis,
+  const response = await withAnalysisModelFallback((model) => getClient().models.generateContent({
+    model,
     contents: `Create accurate, persuasive English e-commerce copy for ${productName}. Use only supported facts from: ${JSON.stringify(analysis)}. Never invent dimensions, ingredients, certifications, compatibility or performance claims. Return a 100-120 character title, a scannable description, exactly 13 tags of at most 20 characters, a 0-100 salesScore and concise scoreReasoning.`,
     config: {
       responseMimeType: "application/json",
