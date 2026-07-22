@@ -10,7 +10,7 @@ import {
   sealCookie,
   sessionCookie,
   unsealCookie,
-} from "../../vercel/etsyAuth";
+} from "../../vercel/etsyAuth.js";
 
 interface PendingOAuth {
   state: string;

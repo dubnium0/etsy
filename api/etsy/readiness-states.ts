@@ -3,7 +3,7 @@ import {
   etsyRequest,
   jsonResponse,
   requireEtsySession,
-} from "../../vercel/etsyAuth";
+} from "../../vercel/etsyAuth.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {

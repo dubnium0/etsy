@@ -3,7 +3,7 @@ import {
   etsyRequest,
   jsonResponse,
   requireEtsySession,
-} from "../../vercel/etsyAuth";
+} from "../../vercel/etsyAuth.js";
 
 interface DraftListingInput {
   title: string;

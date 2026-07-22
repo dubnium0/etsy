@@ -9,7 +9,7 @@ import {
   sealCookie,
   sessionCookie,
   unsealCookie,
-} from "../../vercel/etsyAuth";
+} from "../../vercel/etsyAuth.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {

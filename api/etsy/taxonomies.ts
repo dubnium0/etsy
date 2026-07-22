@@ -4,7 +4,7 @@ import {
   isEtsyConfigured,
   jsonResponse,
   parseEtsyResponse,
-} from "../../vercel/etsyAuth";
+} from "../../vercel/etsyAuth.js";
 
 interface TaxonomyNode {
   id: number;

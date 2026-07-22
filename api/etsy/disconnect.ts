@@ -1,4 +1,4 @@
-import { ETSY_AUTH_COOKIE, clearCookie, jsonResponse } from "../../vercel/etsyAuth";
+import { ETSY_AUTH_COOKIE, clearCookie, jsonResponse } from "../../vercel/etsyAuth.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {
