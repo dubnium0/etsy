@@ -15,6 +15,18 @@ export default {
       if (!isEtsyConfigured()) throw new Error("Add Etsy credentials in Vercel Environment Variables and redeploy.");
 
       const config = getEtsyConfig();
+      const callbackUrl = new URL(config.redirectUri);
+      const requestUrl = new URL(request.url);
+      if (requestUrl.origin !== callbackUrl.origin) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: new URL("/api/etsy/connect", callbackUrl.origin).toString(),
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+
       const state = crypto.randomBytes(24).toString("base64url");
       const verifier = crypto.randomBytes(48).toString("base64url");
       const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
