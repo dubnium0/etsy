@@ -18,6 +18,46 @@ interface EtsyDraftDialogProps {
   onSubmit: (input: EtsyDraftInput) => Promise<EtsyDraftResult>;
 }
 
+function normalizeCategory(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+const ETSY_CATEGORY_ALIASES: Record<string, string> = {
+  "apparel & fashion": "clothing",
+  apparel: "clothing",
+  fashion: "clothing",
+  "beauty & personal care": "bath & beauty",
+  "home & garden": "home & living",
+  "jewelry & accessories": "jewelry",
+  "arts & crafts": "craft supplies & tools",
+  electronics: "electronics & accessories",
+  bags: "bags & purses",
+};
+
+function resolveCategoryQuery(value: string): string {
+  const normalized = normalizeCategory(value);
+  return ETSY_CATEGORY_ALIASES[normalized] || normalized;
+}
+
+function rankTaxonomyMatches(query: string, taxonomies: EtsyTaxonomyOption[]): EtsyTaxonomyOption[] {
+  const normalized = resolveCategoryQuery(query);
+  if (normalized.length < 2) return [];
+  return taxonomies
+    .filter((item) => normalizeCategory(item.path).includes(normalized) || normalizeCategory(item.name).includes(normalized))
+    .sort((a, b) => {
+      const score = (item: EtsyTaxonomyOption) => {
+        const path = normalizeCategory(item.path);
+        const name = normalizeCategory(item.name);
+        if (path === normalized) return 0;
+        if (name === normalized) return 1;
+        if (path.startsWith(normalized)) return 2;
+        if (name.startsWith(normalized)) return 3;
+        return 4;
+      };
+      return score(a) - score(b) || a.path.localeCompare(b.path);
+    });
+}
+
 export function EtsyDraftDialog({
   shopName,
   productCategory,
@@ -47,6 +87,15 @@ export function EtsyDraftDialog({
       .then(([taxonomyOptions, readinessOptions]) => {
         if (!active) return;
         setTaxonomies(taxonomyOptions);
+        const initialMatches = rankTaxonomyMatches(productCategory, taxonomyOptions);
+        const resolvedProductCategory = resolveCategoryQuery(productCategory);
+        const exactPath = initialMatches.find((item) => normalizeCategory(item.path) === resolvedProductCategory);
+        const exactNameMatches = initialMatches.filter((item) => normalizeCategory(item.name) === resolvedProductCategory);
+        const initialSelection = exactPath || (exactNameMatches.length === 1 ? exactNameMatches[0] : null);
+        if (initialSelection) {
+          setSelectedTaxonomy(initialSelection);
+          setCategoryQuery(initialSelection.path);
+        }
         setReadinessStates(readinessOptions);
         setReadinessStateId(readinessOptions[0]?.readinessStateId);
       })
@@ -56,17 +105,21 @@ export function EtsyDraftDialog({
   }, []);
 
   const categoryMatches = useMemo(() => {
-    const normalized = categoryQuery.trim().toLocaleLowerCase();
-    if (normalized.length < 2 || selectedTaxonomy) return [];
-    return taxonomies
-      .filter((item) => item.path.toLocaleLowerCase().includes(normalized))
-      .slice(0, 8);
+    if (selectedTaxonomy) return [];
+    return rankTaxonomyMatches(categoryQuery, taxonomies).slice(0, 8);
   }, [categoryQuery, selectedTaxonomy, taxonomies]);
+
+  const selectTaxonomy = (taxonomy: EtsyTaxonomyOption) => {
+    setSelectedTaxonomy(taxonomy);
+    setCategoryQuery(taxonomy.path);
+    setLocalError(null);
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLocalError(null);
-    if (!selectedTaxonomy) {
+    const resolvedTaxonomy = selectedTaxonomy || rankTaxonomyMatches(categoryQuery, taxonomies)[0];
+    if (!resolvedTaxonomy) {
       setLocalError("Select an Etsy category from the search results.");
       return;
     }
@@ -79,7 +132,7 @@ export function EtsyDraftDialog({
       setResult(await onSubmit({
         price,
         quantity,
-        taxonomyId: selectedTaxonomy.id,
+        taxonomyId: resolvedTaxonomy.id,
         whoMade,
         whenMade,
         isSupply,
@@ -148,15 +201,28 @@ export function EtsyDraftDialog({
                       id="etsy-category"
                       value={categoryQuery}
                       onChange={(event) => { setCategoryQuery(event.target.value); setSelectedTaxonomy(null); }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && categoryMatches[0]) {
+                          event.preventDefault();
+                          selectTaxonomy(categoryMatches[0]);
+                        }
+                      }}
                       autoComplete="off"
                       placeholder="Search Etsy categories"
+                      aria-expanded={categoryMatches.length > 0}
+                      aria-controls="etsy-category-results"
                       className="w-full rounded-lg border border-slate-700 bg-slate-950/60 py-2.5 pl-9 pr-3 text-sm text-slate-100 outline-none transition-colors focus:border-orange-500/60"
                     />
                   </div>
+                  {selectedTaxonomy && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-emerald-300">
+                      <CheckCircle className="h-3.5 w-3.5" /> Etsy category selected
+                    </p>
+                  )}
                   {categoryMatches.length > 0 && (
-                    <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-950 shadow-xl">
+                    <div id="etsy-category-results" role="listbox" className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-950 shadow-xl">
                       {categoryMatches.map((item) => (
-                        <button key={item.id} type="button" onClick={() => { setSelectedTaxonomy(item); setCategoryQuery(item.path); }} className="block w-full border-b border-slate-800 px-3 py-2 text-left text-xs text-slate-300 transition-colors last:border-0 hover:bg-slate-800 hover:text-white">
+                        <button key={item.id} type="button" role="option" aria-selected={false} onClick={() => selectTaxonomy(item)} className="block w-full border-b border-slate-800 px-3 py-2 text-left text-xs text-slate-300 transition-colors last:border-0 hover:bg-slate-800 hover:text-white">
                           {item.path}
                         </button>
                       ))}
